@@ -1,0 +1,35 @@
+{
+  "name": "@athenanetworks/pracbill-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server for the Pracbill Billing API",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "pracbill-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "parse-swagger": "tsx src/swagger-parser.ts"
+  },
+  "keywords": ["mcp", "pracbill", "billing", "api"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
