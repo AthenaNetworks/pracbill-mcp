@@ -2272,6 +2272,232 @@ const getApiKey: ToolDef = {
 };
 
 // ---------------------------------------------------------------------------
+// SERVICE SITES
+// ---------------------------------------------------------------------------
+
+const getCustomerServiceSites: ToolDef = {
+  name: "get_customer_service_sites",
+  description: "List a customer's non-deleted service sites (engineering_sites records, shown in the UI as 'Service Sites'). Constrained to the token's department via the customer.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cid: { type: "integer", description: "Customer ID" },
+    },
+    required: ["cid"],
+  },
+  handler: async (client, args) => {
+    const res = await client.get("/{api_key}/customer/{cid}/service-sites", {
+      cid: args.cid as number,
+    });
+    return formatResult(res.data);
+  },
+};
+
+const getServiceSite: ToolDef = {
+  name: "get_service_site",
+  description: "Fetch a single service site. Fails when the site does not exist, is deleted, or belongs to a customer outside the token's department.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "integer", description: "Service site ID" },
+    },
+    required: ["id"],
+  },
+  handler: async (client, args) => {
+    const res = await client.get("/{api_key}/service-sites/get/{id}", { id: args.id as number });
+    return formatResult(res.data);
+  },
+};
+
+const addServiceSite: ToolDef = {
+  name: "add_service_site",
+  description: "Create a service site. The customer must be in the token's department and the name must not be blank.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cid: { type: "integer", description: "Customer ID (must be in the token's department)" },
+      name: { type: "string", description: "Site name (must not be blank)" },
+      sid: { type: "string", description: "Site reference (DB field sitesid)" },
+      domain_name: { type: "string", description: "Site domain (DB field domainname)" },
+    },
+    required: ["cid", "name"],
+  },
+  handler: async (client, args) => {
+    const res = await client.post("/{api_key}/service-sites/add", {}, {
+      cid: args.cid,
+      name: args.name,
+      sid: args.sid,
+      domain_name: args.domain_name,
+    });
+    return formatResult(res.data);
+  },
+};
+
+const updateServiceSite: ToolDef = {
+  name: "update_service_site",
+  description: "Update a service site (name/sid/domain_name, and optionally cid to another customer in the same department). Fails for a nonexistent, deleted or cross-department site, or a blank name.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "integer", description: "Service site ID to update" },
+      cid: { type: "integer", description: "Customer ID (must be in the token's department)" },
+      name: { type: "string", description: "Site name (must not be blank)" },
+      sid: { type: "string", description: "Site reference (DB field sitesid)" },
+      domain_name: { type: "string", description: "Site domain (DB field domainname)" },
+    },
+    required: ["id", "cid", "name"],
+  },
+  handler: async (client, args) => {
+    const res = await client.post("/{api_key}/service-sites/update/{id}", { id: args.id as number }, {
+      cid: args.cid,
+      name: args.name,
+      sid: args.sid,
+      domain_name: args.domain_name,
+    });
+    return formatResult(res.data);
+  },
+};
+
+const deleteServiceSite: ToolDef = {
+  name: "delete_service_site",
+  description: "Soft-delete a service site (sets deleted = 1; never a hard delete). Fails for a nonexistent, deleted or cross-department site.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      id: { type: "integer", description: "Service site ID to delete" },
+    },
+    required: ["id"],
+  },
+  handler: async (client, args) => {
+    const res = await client.post("/{api_key}/service-sites/delete/{id}", { id: args.id as number });
+    return formatResult(res.data);
+  },
+};
+
+const getCustomerServiceSitesAlias: ToolDef = {
+  name: "get_services_sites_by_customer",
+  description: "List a customer's non-deleted service sites. Alias endpoint of get_customer_service_sites.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cid: { type: "integer", description: "Customer ID" },
+    },
+    required: ["cid"],
+  },
+  handler: async (client, args) => {
+    const res = await client.get("/{api_key}/services/sites/customer/{cid}", {
+      cid: args.cid as number,
+    });
+    return formatResult(res.data);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// CDR EXPORTS
+// ---------------------------------------------------------------------------
+
+const getCdrExports: ToolDef = {
+  name: "get_cdr_exports",
+  description: "List customers with a CDR export configured (both cdr_export_frequency and cdr_export_format set), reporting the last export run, computed next run, export path and format. By default only customers with a pending next run are returned; set include_inactive to list all.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      include_inactive: {
+        type: "boolean",
+        description: "Include customers whose next export run is not yet pending (default: false)",
+      },
+    },
+    required: [],
+  },
+  handler: async (client, args) => {
+    const res = args.include_inactive
+      ? await client.get("/{api_key}/cdr/exports/{include_inactive}", { include_inactive: 1 })
+      : await client.get("/{api_key}/cdr/exports");
+    return formatResult(res.data);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// INVOICE CSV EXPORTS
+// ---------------------------------------------------------------------------
+
+const getInvoiceCsv: ToolDef = {
+  name: "get_invoice_csv",
+  description: "Download an invoice as CSV. Site-grouped invoices carry a trailing Site Name column (empty when the row has no engineering site).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      iid: { type: "integer", description: "Invoice ID" },
+    },
+    required: ["iid"],
+  },
+  handler: async (client, args) => {
+    const res = await client.get("/{api_key}/invoice/get/csv/{iid}", { iid: args.iid as number });
+    return formatResult(res.data);
+  },
+};
+
+const getInvoiceUsageCsv: ToolDef = {
+  name: "get_invoice_usage_csv",
+  description: "Download invoice usage (call/CDR detail) as CSV. Each row carries a trailing Site Name column (empty when the charged service has no engineering site).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      iid: { type: "integer", description: "Invoice ID" },
+    },
+    required: ["iid"],
+  },
+  handler: async (client, args) => {
+    const res = await client.get("/{api_key}/invoice/get/csv/usage/{iid}", {
+      iid: args.iid as number,
+    });
+    return formatResult(res.data);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// PASSWORD RESET (unauthenticated — no API key in path)
+// ---------------------------------------------------------------------------
+
+const requestPasswordReset: ToolDef = {
+  name: "request_password_reset",
+  description: "Initiate the internal-user password reset flow. Unauthenticated (no API key). Always returns a generic success response so account existence is never revealed.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      username: { type: "string", description: "The username or email address of the account to reset" },
+    },
+    required: ["username"],
+  },
+  handler: async (client, args) => {
+    const res = await client.post("/password-reset/request", {}, { username: args.username });
+    return formatResult(res.data);
+  },
+};
+
+const confirmPasswordReset: ToolDef = {
+  name: "confirm_password_reset",
+  description: "Complete the internal-user password reset flow using a token issued by request_password_reset. Unauthenticated (no API key).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      token: { type: "string", description: "The 64-character lowercase hex reset token from the emailed reset link" },
+      password: { type: "string", description: "The new password (minimum 8 characters)" },
+      password_confirm: { type: "string", description: "Must match password" },
+    },
+    required: ["token", "password", "password_confirm"],
+  },
+  handler: async (client, args) => {
+    const res = await client.post("/password-reset/confirm", {}, {
+      token: args.token,
+      password: args.password,
+      password_confirm: args.password_confirm,
+    });
+    return formatResult(res.data);
+  },
+};
+
+// ---------------------------------------------------------------------------
 // EXPORT ALL TOOLS
 // ---------------------------------------------------------------------------
 
@@ -2441,6 +2667,25 @@ export const ALL_TOOLS: ToolDef[] = [
   getCalendar,
   getCalendarEvents,
   getCalendarEventsUrl,
+
+  // Service Sites
+  getCustomerServiceSites,
+  getCustomerServiceSitesAlias,
+  getServiceSite,
+  addServiceSite,
+  updateServiceSite,
+  deleteServiceSite,
+
+  // CDR Exports
+  getCdrExports,
+
+  // Invoice CSV Exports
+  getInvoiceCsv,
+  getInvoiceUsageCsv,
+
+  // Password Reset
+  requestPasswordReset,
+  confirmPasswordReset,
 
   // Authentication
   getApiKey,

@@ -14,8 +14,12 @@
  *   LOG_LEVEL         - Logging level: DEBUG, INFO, WARN, ERROR (default: INFO)
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import { PracbillClient } from "./api-client.js";
 import { logger, setLogLevel, LogLevel } from "./logger.js";
 import { ALL_TOOLS } from "./tools.js";
@@ -62,49 +66,67 @@ async function main() {
   const config = getConfig();
   const client = new PracbillClient(config);
 
-  const server = new McpServer({
-    name: "pracbill",
-    version: "1.0.0",
+  const server = new Server(
+    {
+      name: "pracbill",
+      version: "1.0.0",
+    },
+    {
+      capabilities: { tools: {} },
+    },
+  );
+
+  // Index tools by name for dispatch. The low-level Server API is used rather
+  // than McpServer because our tool definitions carry raw JSON Schema, which
+  // McpServer.tool()/registerTool() rejects (it expects a Zod shape).
+  const toolsByName = new Map(ALL_TOOLS.map((tool) => [tool.name, tool]));
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: ALL_TOOLS.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })),
+  }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    const tool = toolsByName.get(name);
+
+    if (!tool) {
+      logger.error("Unknown tool requested", { tool: name });
+      return {
+        content: [{ type: "text" as const, text: `Error: unknown tool "${name}"` }],
+        isError: true,
+      };
+    }
+
+    logger.info("Tool invoked", { tool: name });
+
+    try {
+      const result = await tool.handler(client, args ?? {});
+      return {
+        content: [{ type: "text" as const, text: result }],
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const details = error instanceof Error && "responseBody" in error
+        ? JSON.stringify((error as any).responseBody)
+        : undefined;
+
+      logger.error("Tool error", { tool: name, error: message, details });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${message}${details ? `\nDetails: ${details}` : ""}`,
+          },
+        ],
+        isError: true,
+      };
+    }
   });
-
-  // Register all tools
-  for (const tool of ALL_TOOLS) {
-    server.tool(
-      tool.name,
-      tool.description,
-      tool.inputSchema as any,
-      async (args: Record<string, unknown>) => {
-        logger.info("Tool invoked", { tool: tool.name });
-        try {
-          const result = await tool.handler(client, args);
-          return {
-            content: [{ type: "text" as const, text: result }],
-          };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const details = error instanceof Error && "responseBody" in error
-            ? JSON.stringify((error as any).responseBody)
-            : undefined;
-
-          logger.error("Tool error", {
-            tool: tool.name,
-            error: message,
-            details,
-          });
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: ${message}${details ? `\nDetails: ${details}` : ""}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-      },
-    );
-  }
 
   logger.info("Registered tools", { count: ALL_TOOLS.length });
 

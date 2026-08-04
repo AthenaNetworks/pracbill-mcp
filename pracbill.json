@@ -78,9 +78,130 @@
     {
       "name": "payment_methods",
       "description": "Customer payment method management"
+    },
+    {
+      "name": "authentication",
+      "description": "Authentication and password reset endpoints"
     }
   ],
   "paths": {
+    "/password-reset/request": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Request a password reset",
+        "description": "Initiates the internal-user password reset flow. Unauthenticated (no API key). Accepts a username or email address and always returns a generic success response so account existence is never revealed. When the account exists and is active, a reset token is created and emailed. Tokens and passwords are never written to API request logs.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "description": "The username or email address of the account to reset.",
+                    "example": "user@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generic success response (returned for valid, invalid, unknown and malformed usernames).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "If an account exists with that username or email, a password reset link has been sent."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/password-reset/confirm": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Complete a password reset",
+        "description": "Completes the internal-user password reset flow using a token issued by /password-reset/request. Unauthenticated (no API key). Validates that the token is a 64-character lowercase hex string, that the password is at least 8 characters, and that password and password_confirm match, before resetting the password and consuming the token. Used, expired, malformed or unknown tokens return a generic invalid/expired response. Tokens and passwords are never written to API request logs.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "password",
+                  "password_confirm"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The 64-character lowercase hex reset token from the emailed reset link.",
+                    "example": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "The new password (minimum 8 characters).",
+                    "example": "newSecurePass123"
+                  },
+                  "password_confirm": {
+                    "type": "string",
+                    "description": "Must match password.",
+                    "example": "newSecurePass123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reset result. success is true when the password was reset; otherwise false with a validation or generic invalid/expired error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Your password has been reset successfully."
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Present when success is false.",
+                      "example": "This password reset link is invalid or has expired. Please request a new one."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/{api_key}/services/qualify": {
       "post": {
         "tags": [
@@ -1022,13 +1143,22 @@
           },
           "description": "The page number to return",
           "required": true
+        },
+        {
+          "in": "query",
+          "name": "include_inactive",
+          "schema": {
+            "type": "boolean"
+          },
+          "description": "Inactive (retired) service types are excluded by default; pass 1 to include them",
+          "required": false
         }
       ],
       "get": {
         "tags": [
           "service_types"
         ],
-        "description": "Retrieve a paginated list of service types and basic information",
+        "description": "Retrieve a paginated list of service types and basic information. Only active service types are returned unless include_inactive is set.",
         "responses": {
           "200": {
             "description": "Request received successfully",
@@ -1693,6 +1823,88 @@
             "description": "PDF file",
             "content": {
               "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{api_key}/invoice/get/csv/{iid}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "api_key",
+          "description": "The API Token",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "iid",
+          "description": "Invoice ID",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "invoices"
+        ],
+        "description": "Download invoice as CSV file. Site-grouped invoices carry a trailing Site Name column (empty when the row has no engineering site). An invalid API key or missing iid returns a JSON error instead.",
+        "responses": {
+          "200": {
+            "description": "CSV file",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{api_key}/invoice/get/csv/usage/{iid}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "api_key",
+          "description": "The API Token",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "iid",
+          "description": "Invoice ID",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "invoices"
+        ],
+        "description": "Download invoice usage (call/CDR detail) as CSV file. Each row carries a trailing Site Name column (empty when the charged service has no engineering site). An invalid API key or missing iid returns a JSON error instead.",
+        "responses": {
+          "200": {
+            "description": "CSV file",
+            "content": {
+              "text/csv": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
@@ -2577,6 +2789,80 @@
         }
       }
     },
+    "/{api_key}/cdr/exports": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "api_key",
+          "description": "The API Token",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "cdr"
+        ],
+        "description": "List customers that have a CDR export configured (cdr_export_frequency and cdr_export_format both set), reporting the last export run, the computed next run, and the export path and format. By default only customers whose next run is still pending are returned, for export-run monitoring/alerting.",
+        "responses": {
+          "200": {
+            "description": "Request received successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdrExportsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{api_key}/cdr/exports/{include_inactive}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "api_key",
+          "description": "The API Token",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "in": "path",
+          "name": "include_inactive",
+          "description": "Pass the literal string \"include_inactive\" to also return exports whose next run is not yet pending (i.e. every configured customer, not just those currently due).",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "include_inactive"
+            ]
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "cdr"
+        ],
+        "description": "As GET /{api_key}/cdr/exports, but includes customers whose next export run is not yet pending.",
+        "responses": {
+          "200": {
+            "description": "Request received successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdrExportsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/{api_key}/report": {
       "parameters": [
         {
@@ -3051,12 +3337,47 @@
         "tags": [
           "services"
         ],
-        "description": "Search for services with flexible criteria",
+        "description": "Search for services with flexible criteria. The request body is a JSON **array** of criterion objects. Each criterion has a `field`, a `value`, and an optional `operator` (defaults to `like`). Multiple criteria are combined with AND. Results are automatically scoped to the API token's department.",
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ServiceSearchCriteria"
+              },
+              "examples": {
+                "byServiceNumber": {
+                  "summary": "Exact match on a service number",
+                  "value": [
+                    {
+                      "field": "service_num",
+                      "value": "456789098",
+                      "operator": "="
+                    }
+                  ]
+                },
+                "partialBillingName": {
+                  "summary": "Partial (LIKE) match on billing name",
+                  "value": [
+                    {
+                      "field": "billing_name",
+                      "value": "Smith"
+                    }
+                  ]
+                },
+                "activeServicesForCustomer": {
+                  "summary": "Active services for a customer (active_services takes no value)",
+                  "value": [
+                    {
+                      "field": "cid",
+                      "value": 12345,
+                      "operator": "="
+                    },
+                    {
+                      "field": "active_services"
+                    }
+                  ]
+                }
               }
             }
           }
@@ -3071,6 +3392,107 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/{api_key}/customer/{cid}/service-sites": {
+      "parameters": [
+        { "in": "path", "name": "api_key", "description": "The API Token", "required": true, "schema": { "type": "string" } },
+        { "in": "path", "name": "cid", "description": "Customer ID", "required": true, "schema": { "type": "integer" } }
+      ],
+      "get": {
+        "tags": [ "services" ],
+        "description": "List a customer's non-deleted service sites (the engineering_sites records shown in the UI as \"Service Sites\"). Constrained to the token's department via the customer.",
+        "responses": {
+          "200": {
+            "description": "Service sites for the customer",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceSiteListResponse" } } }
+          }
+        }
+      }
+    },
+    "/{api_key}/services/sites/customer/{cid}": {
+      "parameters": [
+        { "in": "path", "name": "api_key", "description": "The API Token", "required": true, "schema": { "type": "string" } },
+        { "in": "path", "name": "cid", "description": "Customer ID", "required": true, "schema": { "type": "integer" } }
+      ],
+      "get": {
+        "tags": [ "services" ],
+        "description": "Alias of /{api_key}/customer/{cid}/service-sites — list a customer's non-deleted service sites.",
+        "responses": {
+          "200": {
+            "description": "Service sites for the customer",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceSiteListResponse" } } }
+          }
+        }
+      }
+    },
+    "/{api_key}/service-sites/get/{id}": {
+      "parameters": [
+        { "in": "path", "name": "api_key", "description": "The API Token", "required": true, "schema": { "type": "string" } },
+        { "in": "path", "name": "id", "description": "Service site ID", "required": true, "schema": { "type": "integer" } }
+      ],
+      "get": {
+        "tags": [ "services" ],
+        "description": "Fetch a single service site. Fails when the site does not exist, is deleted, or belongs to a customer outside the token's department.",
+        "responses": {
+          "200": {
+            "description": "The service site",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceSiteGetResponse" } } }
+          }
+        }
+      }
+    },
+    "/{api_key}/service-sites/add": {
+      "parameters": [
+        { "in": "path", "name": "api_key", "description": "The API Token", "required": true, "schema": { "type": "string" } }
+      ],
+      "post": {
+        "tags": [ "services" ],
+        "description": "Create a service site. cid must be a customer in the token's department; name must not be blank.",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceSiteCreateItem" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Service site created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiCreateItemBasicResponse" } } }
+          }
+        }
+      }
+    },
+    "/{api_key}/service-sites/update/{id}": {
+      "parameters": [
+        { "in": "path", "name": "api_key", "description": "The API Token", "required": true, "schema": { "type": "string" } },
+        { "in": "path", "name": "id", "description": "Service site ID", "required": true, "schema": { "type": "integer" } }
+      ],
+      "post": {
+        "tags": [ "services" ],
+        "description": "Update a service site (name/sid/domain_name, and optionally cid to another customer in the same department). Fails for a nonexistent/deleted/cross-department site or a blank name.",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceSiteCreateItem" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Service site updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiBasicResponse" } } }
+          }
+        }
+      }
+    },
+    "/{api_key}/service-sites/delete/{id}": {
+      "parameters": [
+        { "in": "path", "name": "api_key", "description": "The API Token", "required": true, "schema": { "type": "string" } },
+        { "in": "path", "name": "id", "description": "Service site ID", "required": true, "schema": { "type": "integer" } }
+      ],
+      "post": {
+        "tags": [ "services" ],
+        "description": "Soft-delete a service site (deleted = 1; never a hard delete). Fails for a nonexistent/deleted/cross-department site.",
+        "responses": {
+          "200": {
+            "description": "Service site deleted",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiBasicResponse" } } }
           }
         }
       }
@@ -5583,21 +6005,49 @@
           "schema": {
             "type": "integer"
           }
+        },
+        {
+          "in": "query",
+          "name": "format",
+          "description": "Output format. Omitted or 'pdf' returns the inline PDF (default); 'json' returns the statement rows as structured JSON.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "json"
+            ],
+            "default": "pdf"
+          }
+        },
+        {
+          "in": "query",
+          "name": "date_to",
+          "description": "Optional window end (YYYY-MM-DD). Defaults to today when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "get": {
         "tags": [
           "customers"
         ],
-        "description": "Get customer statement as PDF",
+        "description": "Get customer statement as an inline PDF (default), or as structured JSON when format=json is passed.",
         "responses": {
           "200": {
-            "description": "PDF statement",
+            "description": "Inline PDF statement, or the JSON statement when format=json (JSON errors also return 200 with success=false).",
             "content": {
               "application/pdf": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerStatementResponse"
                 }
               }
             }
@@ -5633,21 +6083,49 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "in": "query",
+          "name": "format",
+          "description": "Output format. Omitted or 'pdf' returns the inline PDF (default); 'json' returns the statement rows as structured JSON.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "json"
+            ],
+            "default": "pdf"
+          }
+        },
+        {
+          "in": "query",
+          "name": "date_to",
+          "description": "Optional window end (YYYY-MM-DD). Defaults to today when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "get": {
         "tags": [
           "customers"
         ],
-        "description": "Get customer statement from specific date as PDF",
+        "description": "Get customer statement from a specific date as an inline PDF (default), or as structured JSON when format=json is passed.",
         "responses": {
           "200": {
-            "description": "PDF statement",
+            "description": "Inline PDF statement, or the JSON statement when format=json (JSON errors also return 200 with success=false).",
             "content": {
               "application/pdf": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerStatementResponse"
                 }
               }
             }
@@ -6868,7 +7346,7 @@
       },
       "ServiceTypeFilterOption": {
         "type": "object",
-        "description": "All Items are optional, only use the items required",
+        "description": "All Items are optional, only use the items required. By default only active service types are returned; filter on `active` explicitly or set `include_inactive` to true to get inactive records as well.",
         "properties": {
           "helpdesk_display": {
             "type": "boolean",
@@ -6921,6 +7399,14 @@
           "allow_order": {
             "type": "boolean",
             "description": "If the service is allowed to be ordered through the orders module"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Filter by active state. Defaults to true (active only) when neither this nor include_inactive is supplied"
+          },
+          "include_inactive": {
+            "type": "boolean",
+            "description": "Set to true to return both active and inactive service types (ignored when `active` is supplied)"
           },
           "typeofservice": {
             "type": "string",
@@ -7009,6 +7495,11 @@
             "type": "string",
             "description": "Name of service type",
             "example": "Cool Service"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether the service type is active (inactive types are hidden from lists and selectors but remain valid on existing services)",
+            "example": true
           },
           "accounting_account": {
             "type": "string",
@@ -7167,6 +7658,11 @@
             "description": "Name of the service type (required)",
             "example": "Business Phone Line"
           },
+          "active": {
+            "type": "boolean",
+            "description": "Whether the service type is active and offered in lists/selectors (defaults to true)",
+            "example": true
+          },
           "ratecode": {
             "type": "string",
             "description": "Internal rate code",
@@ -7271,6 +7767,11 @@
             "type": "string",
             "description": "Name of the service type",
             "example": "Business Phone Line"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether the service type is active and offered in lists/selectors",
+            "example": true
           },
           "ratecode": {
             "type": "string",
@@ -7595,6 +8096,11 @@
           },
           "position": {
             "type": "string"
+          },
+          "people_type": {
+            "type": "string",
+            "description": "Contact type from people_related.people_type. Known values: technical, accounts, site, authorised. Multiple values may be stored together using the legacy '^,^' delimiter (e.g. 'technical^,^accounts'). On create/update this field is optional; when provided it is persisted on the customer/contact relationship.",
+            "example": "accounts"
           }
         }
       },
@@ -8183,6 +8689,59 @@
           "nbn_avc": {
             "type": "string",
             "description": "NBN AVC identifier"
+          },
+          "locid": {
+            "type": "string",
+            "description": "NBN Location ID (the engineering record's `nbn_loc_id`). Empty if not set."
+          },
+          "primaryAddress": {
+            "type": "string",
+            "description": "The service's primary (\"Service\") address as a single full-address string. Empty if no address is set. Set/update it via the full_address field on add/update."
+          },
+          "site_id": {
+            "type": "integer",
+            "description": "Service site this service belongs to (engineering.engineering_site_id). Empty/0 if none. See the Service Sites API."
+          }
+        }
+      },
+      "ServiceSiteRecord": {
+        "type": "object",
+        "description": "A customer service site (engineering_sites row).",
+        "properties": {
+          "id": { "type": "integer", "description": "Service site ID" },
+          "cid": { "type": "integer", "description": "Customer ID" },
+          "name": { "type": "string", "description": "Site name" },
+          "sid": { "type": "string", "description": "Site reference (DB field sitesid)" },
+          "domain_name": { "type": "string", "description": "Site domain (DB field domainname)" }
+        }
+      },
+      "ServiceSiteCreateItem": {
+        "type": "object",
+        "required": [
+          "cid",
+          "name"
+        ],
+        "properties": {
+          "cid": { "type": "integer", "description": "Customer ID (must be in the token's department)" },
+          "name": { "type": "string", "description": "Site name (must not be blank)" },
+          "sid": { "type": "string", "description": "Site reference (DB field sitesid)" },
+          "domain_name": { "type": "string", "description": "Site domain (DB field domainname)" }
+        }
+      },
+      "ServiceSiteGetResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "record": { "$ref": "#/components/schemas/ServiceSiteRecord" }
+        }
+      },
+      "ServiceSiteListResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "records": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ServiceSiteRecord" }
           }
         }
       },
@@ -8255,46 +8814,81 @@
           "nbn_avc": {
             "type": "string",
             "description": "NBN AVC identifier"
+          },
+          "full_address": {
+            "type": "string",
+            "description": "The service's primary (\"Service\") address. Provided as a full-address string which is geocoded against Australian addresses and stored. Omit to leave the address unchanged."
+          },
+          "site_id": {
+            "type": "integer",
+            "description": "Service site to link this service to. Validated to be a live site of the same customer in the token's department; rejected otherwise. Omit to leave unchanged."
           }
         }
       },
       "ServiceSearchCriteria": {
+        "type": "array",
+        "description": "A list of search criteria. Each element is a single field/value condition; all conditions are combined with AND. At least one valid criterion is required.",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/components/schemas/ServiceSearchCriterion"
+        }
+      },
+      "ServiceSearchCriterion": {
         "type": "object",
-        "description": "Flexible search criteria - all fields are optional",
+        "description": "A single search condition. Use `field` + `value` (+ optional `operator`) for a normal condition, or the special `active_services` field on its own to restrict results to currently-active services.",
+        "required": [
+          "field"
+        ],
         "properties": {
-          "id": {
-            "type": "integer",
-            "description": "Service ID (enid)"
-          },
-          "cid": {
-            "type": "integer",
-            "description": "Customer ID"
-          },
-          "service_num": {
+          "field": {
             "type": "string",
-            "description": "Service number"
+            "description": "The field to filter on. `active_services` is a special flag that takes no value/operator and limits results to services that have not ended (date_ended unset or in the future). Unrecognised fields are silently ignored.",
+            "enum": [
+              "id",
+              "cid",
+              "service_num",
+              "servicetype",
+              "start_date",
+              "monthlyfee",
+              "date_ended",
+              "billing_name",
+              "call_rates_id",
+              "username",
+              "parent_id",
+              "quantity",
+              "nbn_avc",
+              "locid",
+              "site_id",
+              "ip_ipadd",
+              "date_created",
+              "date_modified",
+              "active_services"
+            ]
           },
-          "servicetype": {
-            "type": "integer",
-            "description": "Service type ID"
+          "value": {
+            "description": "The value to compare against. Required for every field except `active_services`. May be a string or number depending on the field.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
           },
-          "start_date": {
+          "operator": {
             "type": "string",
-            "format": "date",
-            "description": "Start date"
-          },
-          "date_ended": {
-            "type": "string",
-            "format": "date",
-            "description": "End date"
-          },
-          "billing_name": {
-            "type": "string",
-            "description": "Billing name"
-          },
-          "username": {
-            "type": "string",
-            "description": "Username (ext_field2)"
+            "description": "Comparison operator. Defaults to `like` (substring match — the value is wrapped in % wildcards) when omitted. Ignored for `active_services`.",
+            "default": "like",
+            "enum": [
+              "=",
+              "like",
+              "<",
+              ">",
+              "<=",
+              ">=",
+              "!="
+            ]
           }
         }
       },
@@ -9996,6 +10590,74 @@
           }
         }
       },
+      "CustomerStatementResponse": {
+        "type": "object",
+        "description": "JSON customer statement (returned when format=json). On error, success is false and a description is returned instead of the statement.",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "description": {
+            "type": "string",
+            "description": "Error message when success is false (e.g. 'invalid key', 'must include cid', 'invalid customer')."
+          },
+          "cid": {
+            "type": "integer"
+          },
+          "date_from": {
+            "type": "string",
+            "description": "Resolved window start (defaults applied when omitted).",
+            "example": "2024-01-01 00:00"
+          },
+          "date_to": {
+            "type": "string",
+            "description": "Resolved window end (defaults applied when omitted).",
+            "example": "2024-12-31 23:59"
+          },
+          "statement": {
+            "type": "array",
+            "description": "Statement rows in the same chronological/balance order as the PDF.",
+            "items": {
+              "$ref": "#/components/schemas/CustomerStatementRow"
+            }
+          }
+        }
+      },
+      "CustomerStatementRow": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Row type: 'Invoice', a payment type (e.g. the gateway public name), or empty for the opening-balance row.",
+            "example": "Invoice"
+          },
+          "iid": {
+            "type": "integer",
+            "description": "Related invoice id (empty for the opening-balance row)."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Line description. May contain presentation HTML (e.g. <br>) — escape before rendering into a web page."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Row amount; payments are negative."
+          },
+          "balance": {
+            "type": "number",
+            "description": "Running balance after this row."
+          },
+          "date": {
+            "type": "string",
+            "example": "2024-03-15 00:00"
+          },
+          "date_text": {
+            "type": "string",
+            "example": "15 Mar 2024"
+          }
+        }
+      },
       "CustomerManagementStatusResponse": {
         "type": "object",
         "properties": {
@@ -10044,6 +10706,11 @@
           },
           "position": {
             "type": "string"
+          },
+          "people_type": {
+            "type": "string",
+            "description": "Optional contact type to store on the customer/contact relationship (people_related.people_type). Known values: technical, accounts, site, authorised. Multiple values may be supplied using the legacy '^,^' delimiter (e.g. 'technical^,^accounts').",
+            "example": "accounts"
           }
         }
       },
@@ -10500,6 +11167,57 @@
             "type": "string",
             "description": "Status message. Returns 'Payment already recorded (duplicate transaction_id)' if a payment with the same transaction_id already exists.",
             "example": "External payment logged successfully"
+          }
+        }
+      },
+      "CdrExportsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the request was able to process successfully or not"
+          },
+          "data": {
+            "type": "array",
+            "description": "One entry per customer with a CDR export configured.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cid": {
+                  "type": "integer",
+                  "description": "Customer ID"
+                },
+                "company": {
+                  "type": "string",
+                  "description": "Customer company name"
+                },
+                "frequency": {
+                  "type": "string",
+                  "description": "Configured export frequency (customers.cdr_export_frequency), e.g. 'daily' or 'daily-dynamic'.",
+                  "example": "daily"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Export destination directory (customers.cdr_export_dir)."
+                },
+                "format": {
+                  "type": "string",
+                  "description": "Configured export format (customers.cdr_export_format)."
+                },
+                "lastRun": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Timestamp of the most recent export run (cdr_exports.date_created), or null if the export has never run.",
+                  "example": "2026-07-02 03:00:00"
+                },
+                "nextRun": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "Computed timestamp of the next expected export run, or null when it cannot be computed (no prior run, no active services, or inactive customer).",
+                  "example": "2026-07-03 03:00:00"
+                }
+              }
+            }
           }
         }
       }

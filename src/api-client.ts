@@ -31,6 +31,21 @@ export class PracbillApiError extends Error {
   }
 }
 
+/**
+ * Detects Pracbill's HTTP-200-with-failure-body convention.
+ * Only an explicit `success: false` counts — responses without a `success`
+ * field (the majority: bare arrays, result objects) are treated as fine.
+ */
+function isFailureBody(data: unknown): boolean {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    !Array.isArray(data) &&
+    "success" in data &&
+    (data as { success: unknown }).success === false
+  );
+}
+
 export class PracbillClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -53,7 +68,19 @@ export class PracbillClient {
     let path = pathTemplate.replace("{api_key}", this.apiKey);
 
     for (const [key, value] of Object.entries(pathParams)) {
+      if (value === undefined || value === null) continue;
       path = path.replace(`{${key}}`, encodeURIComponent(String(value)));
+    }
+
+    // Fail loudly rather than requesting a URL with a literal "{uid}" in it,
+    // which the API answers with a confusing 404/500 instead of a clear error.
+    const unresolved = path.match(/\{([^}]+)\}/g);
+    if (unresolved) {
+      throw new Error(
+        `Missing required path parameter(s) for ${pathTemplate}: ${unresolved
+          .map((p) => p.slice(1, -1))
+          .join(", ")}`,
+      );
     }
 
     return `${this.baseUrl}${path}`;
@@ -76,13 +103,19 @@ export class PracbillClient {
       }
     }
 
+    // Header quirks of the Pracbill API, both confirmed against a live tenant:
+    //  - Several routes (serviceType, priceBooks, callRates, ...) answer a bare
+    //    "Accept: application/json" with HTTP 406, so a */* fallback is kept
+    //    while still expressing a preference for JSON.
+    //  - Content-Type is required on every request, including bodyless GETs:
+    //    the service-sites routes reject its absence with HTTP 415.
     const headers: Record<string, string> = {
-      Accept: "application/json",
+      Accept: "application/json, */*",
+      "Content-Type": "application/json",
     };
 
     let bodyStr: string | undefined;
     if (options.body !== undefined) {
-      headers["Content-Type"] = "application/json";
       bodyStr = JSON.stringify(options.body);
     }
 
@@ -120,10 +153,28 @@ export class PracbillClient {
           responseHeaders[key] = value;
         });
 
-        if (contentType.includes("application/pdf") || contentType.includes("text/calendar") || contentType.includes("text/html")) {
+        // Non-JSON payloads (PDF invoices, CSV exports, calendar feeds) are
+        // returned as text. Errors must still be raised — an HTML error page
+        // is not a successful download.
+        if (
+          contentType.includes("application/pdf") ||
+          contentType.includes("text/calendar") ||
+          contentType.includes("text/csv") ||
+          contentType.includes("text/html")
+        ) {
           const text = await response.text();
+
+          if (!response.ok) {
+            throw new PracbillApiError(
+              `API returned ${response.status}: ${response.statusText}`,
+              response.status,
+              text,
+              options.pathTemplate,
+            );
+          }
+
           return {
-            success: response.ok,
+            success: true,
             status: response.status,
             data: text as unknown as T,
             headers: responseHeaders,
@@ -141,6 +192,24 @@ export class PracbillClient {
         if (!response.ok) {
           throw new PracbillApiError(
             `API returned ${response.status}: ${response.statusText}`,
+            response.status,
+            data,
+            options.pathTemplate,
+          );
+        }
+
+        // Pracbill signals application-level failures (invalid key, not found,
+        // validation errors) with HTTP 200 and {"success": false} in the body.
+        // Surface those as errors rather than letting them pass as success.
+        if (isFailureBody(data)) {
+          const description =
+            (data as { description?: unknown }).description ??
+            (data as { message?: unknown }).message;
+
+          throw new PracbillApiError(
+            `API reported failure: ${
+              typeof description === "string" ? description : "request unsuccessful"
+            }`,
             response.status,
             data,
             options.pathTemplate,

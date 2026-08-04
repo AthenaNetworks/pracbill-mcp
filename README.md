@@ -1,6 +1,12 @@
 # Pracbill MCP Server
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that exposes the full **Pracbill Billing API** as tools for AI assistants. Supports **100+ tools** across all API domains including customers, invoices, services, leads, helpdesk, CDR, reporting, and more.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that exposes the full **Pracbill Billing API** as tools for AI assistants. Supports **136 tools** across all API domains including customers, invoices, services, service sites, leads, helpdesk, CDR, reporting, and more.
+
+> **Point `PRACBILL_URL` at your own tenant.** Pracbill is multi-tenant and API keys are
+> tenant-scoped, so a key issued for `https://yourcompany.pracbill.com.au` will be rejected
+> with `{"success": false, "description": "invalid key"}` against `billing.pracbill.com.au`.
+> Use `https://<your-tenant>.pracbill.com.au/api` — the examples below use the shared
+> hosted URL only as a placeholder.
 
 ## Features
 
@@ -45,7 +51,7 @@ npm run build
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `PRACBILL_URL` | Yes | — | Base URL for the Pracbill API (e.g. `https://billing.pracbill.com.au/api`) |
+| `PRACBILL_URL` | Yes | — | Base URL for **your tenant's** Pracbill API, including the `/api` suffix (e.g. `https://<your-tenant>.pracbill.com.au/api`) |
 | `PRACBILL_API_KEY` | Yes | — | Your API authentication key |
 | `PRACBILL_TIMEOUT` | No | `30000` | Request timeout in milliseconds |
 | `PRACBILL_RETRIES` | No | `2` | Max retry attempts for failed requests |
@@ -174,13 +180,19 @@ Add to `.vscode/mcp.json` in your project or global settings:
 - `add_service_item`, `update_service_item`
 - `get_monthly_cost`, `get_pro_rata_cost`, `get_daily_cost`
 
-### Invoices (8 tools)
+### Invoices (10 tools)
 - `get_invoices`, `get_invoice`, `get_customer_invoices`
 - `get_filtered_invoices_paginated`, `get_invoice_pdf`, `get_invoice_statement`
+- `get_invoice_csv`, `get_invoice_usage_csv`
 - `void_invoice`, `mark_invoice_bad_debt`
 
-### CDR (5 tools)
+### Service Sites (6 tools)
+- `get_customer_service_sites`, `get_services_sites_by_customer`, `get_service_site`
+- `add_service_site`, `update_service_site`, `delete_service_site`
+
+### CDR (6 tools)
 - `add_cdr`, `add_multiple_cdrs`, `get_cdr_price`, `get_multiple_cdr_prices`, `get_cdr_status`
+- `get_cdr_exports`
 
 ### Call Management (13 tools)
 - `get_call_types_paginated`, `get_call_type`
@@ -218,8 +230,25 @@ Add to `.vscode/mcp.json` in your project or global settings:
 ### Calendar (3 tools)
 - `get_calendar`, `get_calendar_events`, `get_calendar_events_url`
 
-### Authentication (1 tool)
+### Authentication (3 tools)
 - `get_api_key`
+- `request_password_reset`, `confirm_password_reset` — unauthenticated internal-user
+  password reset flow (no API key in the path)
+
+## API quirks handled by this client
+
+Confirmed against a live tenant — worth knowing if you call the API directly:
+
+- **Failures come back as HTTP 200.** Application-level errors (invalid key, not found,
+  validation) return `{"success": false, "description": "..."}` with a 200 status. The client
+  detects this and raises an error rather than reporting a false success.
+- **`Content-Type: application/json` is required on every request**, including bodyless
+  `GET`s — the service-sites routes answer its absence with HTTP 415.
+- **A bare `Accept: application/json` triggers HTTP 406** on several routes
+  (`serviceType`, `priceBooks`, `callRates`, ...), so the client sends
+  `Accept: application/json, */*`.
+- **Missing path parameters fail fast** with a clear error instead of requesting a URL
+  containing a literal `{uid}`.
 
 ## Swagger Parser
 
