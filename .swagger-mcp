@@ -1,1 +1,1 @@
-SWAGGER_FILEPATH = /Users/josh.finlay/Projects/Pracbill_MCP/pracbill.json
+SWAGGER_FILEPATH = ./pracbill.json
